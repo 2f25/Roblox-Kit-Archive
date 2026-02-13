@@ -348,13 +348,13 @@ function renderPreview(file) {
   }
 
   const season = extractSeasonLabel(file.name);
-  ui.preview.innerHTML = `
-    <img src="${file.download_url}" alt="${escapeHtml(file.name)}" loading="lazy" />
-    <div class="meta">
-      <div><b>Name:</b> ${escapeHtml(file.name)}</div>
-      <div><b>Season:</b> ${escapeHtml(season || "—")}</div>
-      <div><b>Path:</b> ${escapeHtml(file.path)}</div>
-      <div><b>Size:</b> ${escapeHtml(prettyBytes(file.size || 0))}</div>
+ ui.preview.innerHTML = `
+  <img src="${file.download_url}" alt="${escapeHtml(file.name)}" loading="lazy" />
+  <div class="meta">
+    <div><b>${escapeHtml(stripExt(file.name))}</b></div>
+    <div>${escapeHtml(prettyBytes(file.size || 0))}</div>
+  </div>
+`;
       <div style="margin-top:8px;">
         <a href="${file.download_url}" target="_blank" rel="noreferrer">Open image</a>
       </div>
