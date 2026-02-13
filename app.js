@@ -286,7 +286,7 @@ function renderRow(item, kind) {
       <div class="fileIcon">${icon}</div>
       <div class="text">${escapeHtml(stripExt(item.name))}</div>
     </div>
-    <div></div>
+    row.innerHTML = `   <div class="nameCell">     <div class="fileIcon">${icon}</div>     <div class="text">${escapeHtml(stripExt(item.name))}</div>   </div>   <div>${escapeHtml(type)}</div>   <div>${escapeHtml(size)}</div> `;
     <div>${escapeHtml(type)}</div>
     <div>${escapeHtml(size)}</div>
   `;
