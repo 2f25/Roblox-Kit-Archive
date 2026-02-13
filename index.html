@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Roblox Kit Archive</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="window">
+    <header class="topbar">
+      <div class="navbtns">
+        <button class="iconbtn" id="btnBack" title="Back" disabled>←</button>
+        <button class="iconbtn" id="btnForward" title="Forward" disabled>→</button>
+        <button class="iconbtn" id="btnUp" title="Up">↑</button>
+      </div>
+
+      <div class="crumbs" id="breadcrumbs"></div>
+
+      <div class="search">
+        <input id="searchInput" type="search" placeholder="Search kits & folders" />
+      </div>
+    </header>
+
+    <main class="main">
+      <aside class="sidebar">
+        <div class="paneTitle">Folders</div>
+        <div id="tree" class="tree"></div>
+      </aside>
+
+      <section class="content">
+        <div class="paneTitle" id="listTitle">Details</div>
+
+        <div class="listHeader">
+          <div class="col name">Name</div>
+          <div class="col date">Season</div>
+          <div class="col type">Type</div>
+          <div class="col size">Size</div>
+        </div>
+
+        <div id="list" class="list"></div>
+      </section>
+
+      <aside class="preview">
+        <div class="paneTitle">Preview</div>
+        <div class="previewInner" id="preview">
+          <div class="muted">Select a kit to preview.</div>
+        </div>
+      </aside>
+    </main>
+
+    <footer class="statusbar">
+      <div id="statusLeft">Ready</div>
+      <div id="statusRight"></div>
+    </footer>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
