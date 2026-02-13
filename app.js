@@ -47,7 +47,7 @@ function showFatal(e) {
 
 async function init() {
   wireUI();
-  await navigateTo("kits", { push: false });
+  await navigateTo("Roblox Kit Archive", { push: false });
 }
 
 function wireUI() {
