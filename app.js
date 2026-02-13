@@ -317,7 +317,7 @@ function renderRow(item, kind) {
   row.innerHTML = `
     <div class="nameCell">
       <div class="fileIcon">${icon}</div>
-      <div class="text">${escapeHtml(item.name)}</div>
+      <div class="text">${escapeHtml(stripExt(item.name))}</div>
     </div>
     <div>${escapeHtml(season)}</div>
     <div>${escapeHtml(type)}</div>
@@ -412,4 +412,7 @@ function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, c => ({
     "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
   }[c]));
+}
+function stripExt(name) {
+  return name.replace(/\.[^/.]+$/, "");
 }
