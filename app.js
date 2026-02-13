@@ -47,7 +47,7 @@ function showFatal(e) {
 
 async function init() {
   wireUI();
-  await navigateTo("", { push: false });
+  await navigateTo("kits", { push: false });
 }
 
 function wireUI() {
