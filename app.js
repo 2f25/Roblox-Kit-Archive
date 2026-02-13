@@ -1,8 +1,10 @@
-// Explorer-style browser for a PUBLIC GitHub repo.
-// - Left folder tree (A->Z)
-// - Main list: folders A->Z, files newest->oldest (by season like 2025-26 in name)
-// - Display names: NO ".png" (or any extension) anywhere
-// - Preview: NO Season, NO Path (clean)
+// Roblox Kit Archive Explorer (GitHub Pages)
+// - Sidebar folder tree
+// - List view: Name | Type | Size (NO Season column)
+// - Names shown without extensions
+// - Preview: image + name (no season/path)
+// - Folder sort A-Z
+// - Kit sort newest->oldest via season pattern in filename (e.g., 2025-26)
 
 const $ = (s) => document.querySelector(s);
 
@@ -20,7 +22,7 @@ const ui = {
   listTitle: $("#listTitle"),
 };
 
-// Hardcode your repo (safe + avoids inference issues)
+// Hardcode your repo so nothing “mysteriously” stops working.
 const state = {
   owner: "2f25",
   repo: "Roblox-Kit-Archive",
@@ -31,14 +33,17 @@ const state = {
   forward: [],
   selected: null,
 
-  cache: new Map(), // path -> array of items from GitHub Contents API
+  cache: new Map(), // path -> array contents
   query: "",
 };
 
-init().catch((e) => {
+init().catch((e) => showFatal(e));
+
+function showFatal(e) {
   console.error(e);
-  ui.list.innerHTML = `<div class="row"><div class="muted">Error: ${escapeHtml(String(e.message || e))}</div></div>`;
-});
+  ui.list.innerHTML = `<div class="row"><div class="muted">Error: ${escapeHtml(String(e.message || e))}</div><div></div><div></div></div>`;
+  ui.statusLeft.textContent = "Error";
+}
 
 async function init() {
   wireUI();
@@ -91,8 +96,8 @@ async function fetchContents(path) {
 
   const res = await fetch(ghApi(path));
   if (!res.ok) throw new Error(`GitHub API error: ${res.status}`);
-  const data = await res.json();
 
+  const data = await res.json();
   const arr = Array.isArray(data) ? data : [];
   state.cache.set(path, arr);
   return arr;
@@ -191,8 +196,7 @@ async function makeTreeNode(label, path) {
   let loaded = false;
 
   // Auto-expand nodes along current path
-  const shouldAutoExpand = isPathPrefix(path, state.cwdPath);
-  if (shouldAutoExpand) await expand();
+  if (isPathPrefix(path, state.cwdPath)) await expand();
 
   row.addEventListener("click", async (e) => {
     const clickedTwisty = e.target === twisty;
@@ -221,7 +225,6 @@ async function makeTreeNode(label, path) {
       .filter((x) => x.type === "dir")
       .sort((a, b) => a.name.localeCompare(b.name));
 
-    // If no children, hide twisty
     if (kidFolders.length === 0) {
       twisty.textContent = "";
       return;
@@ -254,7 +257,7 @@ function renderList() {
   // Folders A-Z
   folders.sort((a, b) => a.name.localeCompare(b.name));
 
-  // Files newest -> oldest by season; fallback A-Z
+  // Files newest->oldest by season pattern; fallback A-Z
   files.sort((a, b) => {
     const sa = extractSeasonScore(a.name);
     const sb = extractSeasonScore(b.name);
@@ -269,7 +272,7 @@ function renderList() {
   for (const f of files) ui.list.appendChild(renderRow(f, "file"));
 
   if (folders.length === 0 && files.length === 0) {
-    ui.list.innerHTML = `<div class="row"><div class="muted">No items found.</div></div>`;
+    ui.list.innerHTML = `<div class="row"><div class="muted">No items found.</div><div></div><div></div></div>`;
   }
 }
 
@@ -281,12 +284,12 @@ function renderRow(item, kind) {
   const type = kind === "folder" ? "File folder" : (ext(item.name).toUpperCase() + " File");
   const size = kind === "file" ? prettyBytes(item.size || 0) : "";
 
+  // IMPORTANT: exactly 3 columns (Name | Type | Size)
   row.innerHTML = `
     <div class="nameCell">
       <div class="fileIcon">${icon}</div>
       <div class="text">${escapeHtml(stripExt(item.name))}</div>
     </div>
-    <div></div>
     <div>${escapeHtml(type)}</div>
     <div>${escapeHtml(size)}</div>
   `;
@@ -311,7 +314,6 @@ function renderPreview(file) {
     return;
   }
 
-  // Clean preview: image + name (no .png), no season, no path
   ui.preview.innerHTML = `
     <img src="${file.download_url}" alt="${escapeHtml(stripExt(file.name))}" loading="lazy" />
     <div class="meta">
