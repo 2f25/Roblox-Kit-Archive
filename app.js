@@ -74,10 +74,12 @@ function wireUI() {
   });
 
   ui.btnUp.addEventListener("click", async () => {
-    const parts = splitPath(state.cwdPath);
-    parts.pop();
-    await navigateTo(joinPath(parts));
-  });
+  if (state.cwdPath === "Roblox Kit Archive") return;
+  const parts = splitPath(state.cwdPath);
+  parts.pop();
+  const next = joinPath(parts);
+  await navigateTo(next || "Roblox Kit Archive");
+});
 }
 
 function updateNavButtons() {
