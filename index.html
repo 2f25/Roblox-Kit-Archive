@@ -1,4 +1,3 @@
-
 <!doctype html>
 <html lang="en">
 <head>
@@ -16,7 +15,7 @@
         <button class="iconbtn" id="btnUp" title="Up">↑</button>
       </div>
 
-      <div class="crumbs" id="breadcrumbs"></div>
+      <div class="crumbs" id="breadcrumbs" aria-label="Breadcrumb"></div>
 
       <div class="search">
         <input id="searchInput" type="search" placeholder="Search kits & folders" />
@@ -26,7 +25,7 @@
     <main class="main">
       <aside class="sidebar">
         <div class="paneTitle">Folders</div>
-        <div id="tree" class="tree"></div>
+        <div id="tree" class="tree" role="navigation" aria-label="Folder tree"></div>
       </aside>
 
       <section class="content">
@@ -34,12 +33,11 @@
 
         <div class="listHeader">
           <div class="col name">Name</div>
-          <div class="col date">Season</div>
           <div class="col type">Type</div>
           <div class="col size">Size</div>
         </div>
 
-        <div id="list" class="list"></div>
+        <div id="list" class="list" role="list"></div>
       </section>
 
       <aside class="preview">
@@ -56,6 +54,7 @@
     </footer>
   </div>
 
-  <script src="app.js?v=2"></script>
+  <!-- cache-bust so your browser always pulls the newest JS -->
+  <script src="app.js?v=100"></script>
 </body>
 </html>
