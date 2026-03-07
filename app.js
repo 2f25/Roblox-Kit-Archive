@@ -28,14 +28,9 @@ index 37a64d0679ba4ee0883743efa2ac37f2873046cc..321993ffac2b8074037c20cd063c3e54
    return "📄";
  }
  function extractSeasonScore(filename) {
--  // Looks for "2025-26" pattern. If none, returns -1 so those sort last.
 +  // Prefer "2025-26" seasons, but also support single-year names like "Brazil 2022 Home".
 +  // If no year is found, return -1 so unknown files sort last.
    const m = filename.match(/((19|20)\d{2})\s*-\s*(\d{2})/);
--  if (!m) return -1;
--  const startYear = parseInt(m[1], 10);
--  const endYY = parseInt(m[3], 10);
--  return startYear * 100 + endYY;
 +  if (m) {
 +    const startYear = parseInt(m[1], 10);
 +    const endYY = parseInt(m[3], 10);
