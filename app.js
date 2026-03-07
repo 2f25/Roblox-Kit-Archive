@@ -1,79 +1,236 @@
-// Helpers
-function splitPath(path) {
-  return path ? path.split("/").filter(Boolean) : [];
-}
-function joinPath(parts) {
-  return parts.filter(Boolean).join("/");
-}
-function isPathPrefix(prefix, full) {
-  if (!prefix) return true;
-  if (!full) return false;
-  return full === prefix || full.startsWith(prefix + "/");
-}
-function stripExt(name) {
-  return String(name).replace(/\.[^/.]+$/, "");
-}
-function ext(name) {
-  const m = name.toLowerCase().match(/\.([a-z0-9]+)$/);
-  return m ? m[1] : "";
-}
-function iconForExt(name) {
-  const e = ext(name);
-  if (["png", "jpg", "jpeg", "webp", "gif"].includes(e)) return "🖼️";
-  return "📄";
-}
-function extractSeasonScore(filename) {
-  // Sort newest -> oldest using the most recent year signal in the filename.
-  // Supports ranges like 2025-26, 2025-2026, and 2025/26.
-  const text = String(filename);
+const $ = (s) => document.querySelector(s);
 
-  let bestScore = -1;
+const ui = {
+  tree: $("#tree"),
+  list: $("#list"),
+  crumbs: $("#breadcrumbs"),
+  preview: $("#preview"),
+  statusLeft: $("#statusLeft"),
+  statusRight: $("#statusRight"),
+  btnBack: $("#btnBack"),
+  btnForward: $("#btnForward"),
+  btnUp: $("#btnUp"),
+  search: $("#searchInput"),
+  listTitle: $("#listTitle"),
+};
 
-  const rangeRegex = /((?:19|20)\d{2})\s*[-/]\s*((?:19|20)?\d{2})/g;
-  let rangeMatch;
-  while ((rangeMatch = rangeRegex.exec(text)) !== null) {
-    const startYear = parseInt(rangeMatch[1], 10);
-    let endYear = parseInt(rangeMatch[2], 10);
+const state = {
+  owner: "2f25",
+  repo: "Roblox-Kit-Archive",
+  branch: "main",
+  cwdPath: "",
+  history: [],
+  forward: [],
+  selected: null,
+  cache: new Map(),
+  query: "",
+};
 
-    if (endYear < 100) {
-      const century = Math.floor(startYear / 100) * 100;
-      endYear = century + endYear;
-      if (endYear < startYear) endYear += 100;
+init();
+
+async function init() {
+  wireUI();
+  await navigateTo("Roblox Kit Archive", { push: false });
+}
+
+function wireUI() {
+
+  ui.search.addEventListener("input", () => {
+    state.query = ui.search.value.toLowerCase();
+    renderList();
+  });
+
+  ui.btnUp.addEventListener("click", async () => {
+    if (state.cwdPath === "Roblox Kit Archive") return;
+
+    const parts = splitPath(state.cwdPath);
+    parts.pop();
+
+    const next = joinPath(parts);
+    await navigateTo(next || "Roblox Kit Archive");
+  });
+
+}
+
+function ghApi(path) {
+  return `https://api.github.com/repos/${state.owner}/${state.repo}/contents/${path}?ref=${state.branch}`;
+}
+
+async function fetchContents(path) {
+
+  if (state.cache.has(path)) return state.cache.get(path);
+
+  const res = await fetch(ghApi(path));
+  const data = await res.json();
+
+  state.cache.set(path, data);
+  return data;
+
+}
+
+async function navigateTo(path) {
+
+  state.cwdPath = path;
+
+  await fetchContents(path);
+
+  renderBreadcrumbs();
+  renderList();
+  renderPreview(null);
+
+}
+
+function renderBreadcrumbs() {
+
+  const parts = splitPath(state.cwdPath);
+
+  let html = `<a href="#" onclick="navigateTo('Roblox Kit Archive')">Home</a>`;
+
+  let current = "";
+
+  for (let p of parts) {
+
+    current += (current ? "/" : "") + p;
+
+    html += ` › <a href="#" onclick="navigateTo('${current}')">${p}</a>`;
+
+  }
+
+  ui.crumbs.innerHTML = html;
+
+}
+
+function renderList() {
+
+  const items = state.cache.get(state.cwdPath) || [];
+
+  const folders = items.filter(x => x.type === "dir");
+  const files = items.filter(x => x.type === "file");
+
+  folders.sort((a,b)=>a.name.localeCompare(b.name));
+
+  files.sort((a,b)=>extractSeason(b.name)-extractSeason(a.name));
+
+  ui.list.innerHTML = "";
+
+  for (let f of folders) {
+
+    ui.list.appendChild(makeRow(f,true));
+
+  }
+
+  for (let f of files) {
+
+    ui.list.appendChild(makeRow(f,false));
+
+  }
+
+}
+
+function makeRow(item,isFolder){
+
+  const row=document.createElement("div");
+  row.className="row";
+
+  const cleanName=stripExt(item.name);
+
+  row.innerHTML=`
+
+    <div class="nameCell">
+      <div>${isFolder?"📁":"🖼️"}</div>
+      <div class="text">${cleanName}</div>
+    </div>
+
+    <div>${isFolder?"Folder":"PNG File"}</div>
+
+    <div>${isFolder?"":prettyBytes(item.size)}</div>
+
+  `;
+
+  row.onclick=async()=>{
+
+    if(isFolder){
+
+      await navigateTo(item.path);
+
+    }else{
+
+      renderPreview(item);
+
     }
 
-    // Prioritize latest end-year, then start-year.
-    const score = endYear * 10000 + startYear;
-    if (score > bestScore) bestScore = score;
-  }
+  };
 
-  const yearRegex = /(?:19|20)\d{2}/g;
-  let yearMatch;
-  while ((yearMatch = yearRegex.exec(text)) !== null) {
-    const year = parseInt(yearMatch[0], 10);
-    const score = year * 10000;
-    if (score > bestScore) bestScore = score;
-  }
+  return row;
 
-  return bestScore;
 }
 
-function prettyBytes(bytes) {
-  if (!bytes) return "";
-  const units = ["B", "KB", "MB", "GB"];
-  let i = 0;
-  let v = bytes;
-  while (v >= 1024 && i < units.length - 1) {
-    v /= 1024;
+function renderPreview(file){
+
+  if(!file){
+
+    ui.preview.innerHTML=`<div class="muted">Select a kit to preview.</div>`;
+    return;
+
+  }
+
+  ui.preview.innerHTML=`
+
+    <img src="${file.download_url}" style="width:100%;border-radius:10px;" />
+
+    <div style="margin-top:12px;font-weight:bold;">
+      ${stripExt(file.name)}
+    </div>
+
+    <div style="margin-top:8px;">
+      <a href="${file.download_url}" target="_blank">Open image</a>
+    </div>
+
+  `;
+
+}
+
+function stripExt(name){
+
+  return name.replace(/\.[^/.]+$/,"");
+
+}
+
+function extractSeason(name){
+
+  const match=name.match(/(19|20)\d{2}/);
+
+  return match?parseInt(match[0]):0;
+
+}
+
+function prettyBytes(bytes){
+
+  if(!bytes)return "";
+
+  const units=["B","KB","MB"];
+
+  let i=0;
+
+  while(bytes>=1024&&i<units.length-1){
+
+    bytes/=1024;
     i++;
+
   }
-  return `${Math.round(v)} ${units[i]}`;
+
+  return Math.round(bytes)+" "+units[i];
+
 }
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, (c) => ({
-    "&": "&amp;",
-    "<": "&lt;",
-    ">": "&gt;",
-    '"': "&quot;",
-    "'": "&#39;",
-  }[c]));
+
+function splitPath(path){
+
+  return path?path.split("/").filter(Boolean):[];
+
+}
+
+function joinPath(parts){
+
+  return parts.filter(Boolean).join("/");
+
 }
