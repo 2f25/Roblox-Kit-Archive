@@ -5,16 +5,22 @@ const ui = {
   list: $("#list"),
   crumbs: $("#breadcrumbs"),
   preview: $("#preview"),
+  previewPane: $("#previewPane"),
   statusLeft: $("#statusLeft"),
   statusRight: $("#statusRight"),
   btnBack: $("#btnBack"),
   btnForward: $("#btnForward"),
   btnUp: $("#btnUp"),
+  btnFolders: $("#btnFolders"),
+  btnCloseFolders: $("#btnCloseFolders"),
+  btnClosePreview: $("#btnClosePreview"),
+  drawerBackdrop: $("#drawerBackdrop"),
   search: $("#searchInput"),
   listTitle: $("#listTitle"),
 };
 
 const ROOT_PATH = "Roblox Kit Archive";
+const MOBILE_BREAKPOINT = 900;
 
 const state = {
   owner: "2f25",
@@ -32,7 +38,7 @@ const state = {
 
 init().catch((err) => {
   console.error(err);
-  ui.list.innerHTML = `<div class="row"><div>Error: ${err.message}</div><div></div><div></div></div>`;
+  ui.list.innerHTML = `<div class="row"><div>Error: ${escapeHtml(err.message)}</div><div></div><div></div></div>`;
 });
 
 async function init() {
@@ -55,14 +61,16 @@ function wireUI() {
       state.indexing = true;
       ui.list.innerHTML = `<div class="row"><div>Searching all folders…</div><div></div><div></div></div>`;
       ui.listTitle.textContent = "Details";
+
       try {
         state.fullIndex = await buildFullIndex(ROOT_PATH);
       } catch (err) {
         console.error(err);
-        ui.list.innerHTML = `<div class="row"><div>Search error: ${err.message}</div><div></div><div></div></div>`;
+        ui.list.innerHTML = `<div class="row"><div>Search error: ${escapeHtml(err.message)}</div><div></div><div></div></div>`;
         state.indexing = false;
         return;
       }
+
       state.indexing = false;
     }
 
@@ -94,6 +102,44 @@ function wireUI() {
     await navigateTo(next || ROOT_PATH);
     updateNavButtons();
   });
+
+  ui.btnFolders.addEventListener("click", () => setFoldersOpen(true));
+  ui.btnCloseFolders.addEventListener("click", () => setFoldersOpen(false));
+  ui.drawerBackdrop.addEventListener("click", () => setFoldersOpen(false));
+  ui.btnClosePreview.addEventListener("click", closePreview);
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    if (document.body.classList.contains("previewOpen")) {
+      closePreview();
+    } else if (document.body.classList.contains("foldersOpen")) {
+      setFoldersOpen(false);
+    }
+  });
+
+  window.addEventListener("resize", () => {
+    if (!isMobile()) {
+      setFoldersOpen(false);
+      document.body.classList.remove("previewOpen");
+    }
+  });
+}
+
+function isMobile() {
+  return window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT}px)`).matches;
+}
+
+function setFoldersOpen(open) {
+  document.body.classList.toggle("foldersOpen", open && isMobile());
+  ui.btnFolders.setAttribute("aria-expanded", String(open && isMobile()));
+}
+
+function openPreview() {
+  if (isMobile()) document.body.classList.add("previewOpen");
+}
+
+function closePreview() {
+  document.body.classList.remove("previewOpen");
 }
 
 function updateNavButtons() {
@@ -103,7 +149,7 @@ function updateNavButtons() {
 }
 
 function ghApi(path) {
-  return `https://api.github.com/repos/${state.owner}/${state.repo}/contents/${encodeURIComponentPath(path)}?ref=${state.branch}`;
+  return `https://api.github.com/repos/${state.owner}/${state.repo}/contents/${encodeURIComponentPath(path)}?ref=${encodeURIComponent(state.branch)}`;
 }
 
 function encodeURIComponentPath(path) {
@@ -114,9 +160,7 @@ async function fetchContents(path) {
   if (state.cache.has(path)) return state.cache.get(path);
 
   const res = await fetch(ghApi(path));
-  if (!res.ok) {
-    throw new Error(`GitHub API error: ${res.status}`);
-  }
+  if (!res.ok) throw new Error(`GitHub API error: ${res.status}`);
 
   const data = await res.json();
   const arr = Array.isArray(data) ? data : [];
@@ -143,10 +187,11 @@ async function buildFullIndex(path) {
 }
 
 function folderLabelFor(item) {
-  // item.path looks like "Roblox Kit Archive/Premier League/Arsenal/file.png"
   const parts = splitPath(item.path);
-  const withoutRootAndFile = parts.slice(1, -1);
-  return withoutRootAndFile.length ? withoutRootAndFile.join(" / ") : "Home";
+  const rootIndex = parts.indexOf(ROOT_PATH);
+  const start = rootIndex >= 0 ? rootIndex + 1 : 0;
+  const folders = parts.slice(start, -1);
+  return folders.length ? folders.join(" / ") : "Home";
 }
 
 async function navigateTo(path, opts = { push: true }) {
@@ -159,6 +204,7 @@ async function navigateTo(path, opts = { push: true }) {
   state.selected = null;
   state.query = "";
   ui.search.value = "";
+  closePreview();
 
   await fetchContents(path);
 
@@ -167,19 +213,25 @@ async function navigateTo(path, opts = { push: true }) {
   renderList();
   renderPreview(null);
   updateStatus();
+
+  if (isMobile()) setFoldersOpen(false);
 }
 
 function renderBreadcrumbs() {
   const parts = splitPath(state.cwdPath);
-  let html = `<a href="#" data-path="${ROOT_PATH}">Home</a>`;
+  const rootParts = splitPath(ROOT_PATH);
+  const relativeParts = parts.slice(rootParts.length);
 
-  let current = "";
-  for (const p of parts) {
-    current += (current ? "/" : "") + p;
-    html += ` › <a href="#" data-path="${escapeHtml(current)}">${escapeHtml(p)}</a>`;
+  let html = `<a href="#" data-path="${escapeHtml(ROOT_PATH)}">Home</a>`;
+  let current = ROOT_PATH;
+
+  for (const part of relativeParts) {
+    current += `/${part}`;
+    html += ` <span aria-hidden="true">›</span> <a href="#" data-path="${escapeHtml(current)}">${escapeHtml(part)}</a>`;
   }
 
   ui.crumbs.innerHTML = html;
+  ui.crumbs.scrollLeft = ui.crumbs.scrollWidth;
 
   ui.crumbs.querySelectorAll("a[data-path]").forEach((a) => {
     a.addEventListener("click", async (e) => {
@@ -209,6 +261,8 @@ async function makeTreeNode(folder) {
 
   const row = document.createElement("div");
   row.className = "node" + (folder.path === state.cwdPath ? " active" : "");
+  row.tabIndex = 0;
+  row.setAttribute("role", "button");
 
   const twisty = document.createElement("div");
   twisty.className = "twisty";
@@ -222,16 +276,13 @@ async function makeTreeNode(folder) {
   label.className = "label";
   label.textContent = folder.name;
 
-  row.appendChild(twisty);
-  row.appendChild(icon);
-  row.appendChild(label);
+  row.append(twisty, icon, label);
 
   const childrenWrap = document.createElement("div");
   childrenWrap.className = "children";
   childrenWrap.style.display = "none";
 
-  wrap.appendChild(row);
-  wrap.appendChild(childrenWrap);
+  wrap.append(row, childrenWrap);
 
   let expanded = false;
   let loaded = false;
@@ -239,24 +290,27 @@ async function makeTreeNode(folder) {
   const shouldAutoExpand =
     state.cwdPath === folder.path || state.cwdPath.startsWith(folder.path + "/");
 
-  if (shouldAutoExpand) {
-    await expand();
-  }
+  if (shouldAutoExpand) await expand();
 
-  row.addEventListener("click", async (e) => {
+  const activate = async (e) => {
     const clickedTwisty = e.target === twisty;
 
     if (clickedTwisty) {
-      if (expanded) {
-        collapse();
-      } else {
-        await expand();
-      }
+      expanded ? collapse() : await expand();
       return;
     }
 
     await navigateTo(folder.path);
     updateNavButtons();
+  };
+
+  row.addEventListener("click", activate);
+  row.addEventListener("keydown", async (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      await navigateTo(folder.path);
+      updateNavButtons();
+    }
   });
 
   async function expand() {
@@ -292,9 +346,7 @@ async function makeTreeNode(folder) {
 }
 
 function renderList() {
-  const query = state.query;
-
-  if (query && state.fullIndex) {
+  if (state.query && state.fullIndex) {
     renderSearchResults();
     return;
   }
@@ -302,21 +354,18 @@ function renderList() {
   ui.listTitle.textContent = "Details";
 
   const items = state.cache.get(state.cwdPath) || [];
-  let folders = items.filter((x) => x.type === "dir");
-  let files = items.filter((x) => x.type === "file");
-
-  folders.sort((a, b) => a.name.localeCompare(b.name));
-  files.sort((a, b) => extractSeason(b.name) - extractSeason(a.name));
+  const folders = items.filter((x) => x.type === "dir").sort((a, b) => a.name.localeCompare(b.name));
+  const files = items.filter((x) => x.type === "file").sort((a, b) => extractSeason(b.name) - extractSeason(a.name));
 
   ui.list.innerHTML = "";
 
-  for (const folder of folders) {
-    ui.list.appendChild(makeRow(folder, true));
+  if (folders.length === 0 && files.length === 0) {
+    ui.list.innerHTML = `<div class="row"><div class="muted">This folder is empty.</div><div></div><div></div></div>`;
+    return;
   }
 
-  for (const file of files) {
-    ui.list.appendChild(makeRow(file, false));
-  }
+  for (const folder of folders) ui.list.appendChild(makeRow(folder, true));
+  for (const file of files) ui.list.appendChild(makeRow(file, false));
 }
 
 function renderSearchResults() {
@@ -329,70 +378,84 @@ function renderSearchResults() {
   ui.list.innerHTML = "";
 
   if (matches.length === 0) {
-    ui.list.innerHTML = `<div class="row"><div>No kits found matching "${escapeHtml(query)}".</div><div></div><div></div></div>`;
+    ui.list.innerHTML = `<div class="row"><div>No kits found matching “${escapeHtml(query)}”.</div><div></div><div></div></div>`;
     return;
   }
 
-  for (const file of matches) {
-    ui.list.appendChild(makeSearchRow(file));
-  }
+  for (const file of matches) ui.list.appendChild(makeSearchRow(file));
 }
 
 function makeSearchRow(item) {
-  const row = document.createElement("div");
-  row.className = "row";
-
+  const row = createInteractiveRow();
   const cleanName = stripExt(item.name);
   const folderLabel = folderLabelFor(item);
 
   row.innerHTML = `
     <div class="nameCell">
-      <div class="fileIcon">🖼️</div>
+      <div class="fileIcon" aria-hidden="true">🖼️</div>
       <div class="text">
         ${escapeHtml(cleanName)}
-        <div class="muted" style="font-size:11px;margin-top:2px;">${escapeHtml(folderLabel)}</div>
+        <div class="searchPath">${escapeHtml(folderLabel)}</div>
       </div>
     </div>
     <div>PNG File</div>
     <div>${prettyBytes(item.size)}</div>
   `;
 
-  row.addEventListener("click", () => {
-    state.selected = item;
-    renderPreview(item);
-    updateStatus();
-  });
-
+  addRowActivation(row, () => selectFile(item, row));
   return row;
 }
 
 function makeRow(item, isFolder) {
-  const row = document.createElement("div");
-  row.className = "row";
-
+  const row = createInteractiveRow();
   const cleanName = stripExt(item.name);
 
   row.innerHTML = `
     <div class="nameCell">
-      <div class="fileIcon">${isFolder ? "📁" : "🖼️"}</div>
+      <div class="fileIcon" aria-hidden="true">${isFolder ? "📁" : "🖼️"}</div>
       <div class="text">${escapeHtml(cleanName)}</div>
     </div>
     <div>${isFolder ? "Folder" : "PNG File"}</div>
     <div>${isFolder ? "" : prettyBytes(item.size)}</div>
   `;
 
-  row.addEventListener("click", async () => {
+  addRowActivation(row, async () => {
     if (isFolder) {
       await navigateTo(item.path);
       updateNavButtons();
     } else {
-      state.selected = item;
-      renderPreview(item);
-      updateStatus();
+      selectFile(item, row);
     }
   });
 
   return row;
+}
+
+function createInteractiveRow() {
+  const row = document.createElement("div");
+  row.className = "row";
+  row.tabIndex = 0;
+  row.setAttribute("role", "listitem");
+  return row;
+}
+
+function addRowActivation(row, callback) {
+  row.addEventListener("click", callback);
+  row.addEventListener("keydown", async (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      await callback();
+    }
+  });
+}
+
+function selectFile(item, row) {
+  state.selected = item;
+  ui.list.querySelectorAll(".row.selected").forEach((el) => el.classList.remove("selected"));
+  row?.classList.add("selected");
+  renderPreview(item);
+  updateStatus();
+  openPreview();
 }
 
 function renderPreview(file) {
@@ -401,22 +464,19 @@ function renderPreview(file) {
     return;
   }
 
+  const name = stripExt(file.name);
   ui.preview.innerHTML = `
-    <img src="${file.download_url}" style="width:100%;border-radius:10px;" />
-    <div style="margin-top:12px;font-weight:bold;">
-      ${escapeHtml(stripExt(file.name))}
-    </div>
-    <div style="margin-top:8px;">
-      <a href="${file.download_url}" target="_blank" rel="noreferrer">Open image</a>
+    <img src="${file.download_url}" alt="${escapeHtml(name)} kit" decoding="async" />
+    <div class="previewName">${escapeHtml(name)}</div>
+    <div class="previewActions">
+      <a href="${file.download_url}" target="_blank" rel="noreferrer">Open full image</a>
     </div>
   `;
 }
 
 function updateStatus() {
   if (state.query && state.fullIndex) {
-    const matches = state.fullIndex.filter((x) =>
-      stripExt(x.name).toLowerCase().includes(state.query)
-    );
+    const matches = state.fullIndex.filter((x) => stripExt(x.name).toLowerCase().includes(state.query));
     ui.statusLeft.textContent = `${matches.length} result(s) across all folders`;
     ui.statusRight.textContent = state.selected ? stripExt(state.selected.name) : "";
     return;
