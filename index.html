@@ -2,32 +2,46 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#141821" />
   <title>Roblox Kit Archive</title>
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="styles.css?v=103" />
 </head>
 <body>
   <div class="window">
     <header class="topbar">
       <div class="navbtns">
-        <button class="iconbtn" id="btnBack" title="Back" disabled>←</button>
-        <button class="iconbtn" id="btnForward" title="Forward" disabled>→</button>
-        <button class="iconbtn" id="btnUp" title="Up">↑</button>
+        <button class="iconbtn" id="btnBack" type="button" title="Back" aria-label="Back" disabled>←</button>
+        <button class="iconbtn" id="btnForward" type="button" title="Forward" aria-label="Forward" disabled>→</button>
+        <button class="iconbtn" id="btnUp" type="button" title="Up one folder" aria-label="Up one folder">↑</button>
       </div>
 
       <div class="crumbs" id="breadcrumbs" aria-label="Breadcrumb"></div>
 
-      <div class="search">
-        <input id="searchInput" type="search" placeholder="Search kits & folders" />
+      <div class="search" role="search">
+        <span class="searchIcon" aria-hidden="true">⌕</span>
+        <input
+          id="searchInput"
+          type="search"
+          inputmode="search"
+          autocomplete="off"
+          autocapitalize="none"
+          spellcheck="false"
+          aria-label="Search kits and folders"
+          placeholder="Search kits & folders"
+        />
+        <button id="clearSearch" class="clearSearch" type="button" aria-label="Clear search" title="Clear search" hidden>×</button>
       </div>
     </header>
-<section style="padding:20px; border-bottom:1px solid #242a36;">
-  <h2 style="margin:0 0 10px;">Welcome to Roblox Kit Archive</h2>
-  <p style="margin:0; color:#9aa6b2;">
-    Football (Soccer) is the most popular sport in the world. Lets see what teams my fellow Robloxians support! 
-    I organized it all like a file explorer. Browse by club or national teams and explore my finds.
-  </p>
-</section>
+
+    <section class="welcome">
+      <h2>Welcome to Roblox Kit Archive</h2>
+      <p>
+        Football (Soccer) is the most popular sport in the world. Lets see what teams my fellow Robloxians support!
+        I organized it all like a file explorer. Browse by club or national teams and explore my finds.
+      </p>
+    </section>
+
     <main class="main">
       <aside class="sidebar">
         <div class="paneTitle">Folders</div>
@@ -60,7 +74,6 @@
     </footer>
   </div>
 
-  <!-- cache-bust so your browser always pulls the newest JS -->
-  <script src="app.js?v=101"></script>
+  <script src="app.js?v=103"></script>
 </body>
 </html>
