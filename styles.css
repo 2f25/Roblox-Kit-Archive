@@ -241,9 +241,8 @@ body{
     border-right:none;
     border-bottom:1px solid var(--line);
     max-height:160px;
-    overflow-y:auto;
   }
-  .sidebar .tree{ max-height:none; overflow:visible; }
+  .sidebar .tree{ max-height:120px; }
 
   .content{ min-height:280px; }
 
