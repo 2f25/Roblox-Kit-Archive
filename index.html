@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0f1115" />
+  <title>Roblox Kit Archive</title>
+  <link rel="stylesheet" href="styles.css?v=202" />
+</head>
+<body>
+  <div class="window">
+    <header class="topbar">
+      <div class="navbtns">
+        <button class="iconbtn" id="btnBack" type="button" title="Back" aria-label="Back" disabled>←</button>
+        <button class="iconbtn" id="btnForward" type="button" title="Forward" aria-label="Forward" disabled>→</button>
+        <button class="iconbtn" id="btnUp" type="button" title="Up one folder" aria-label="Up one folder">↑</button>
+        <button class="foldersBtn mobileOnly" id="btnFolders" type="button" aria-controls="folderSidebar" aria-expanded="false">
+          <span aria-hidden="true">☰</span>
+          <span>Folders</span>
+        </button>
+      </div>
+
+      <div class="crumbs" id="breadcrumbs" aria-label="Breadcrumb"></div>
+
+      <div class="search">
+        <label class="srOnly" for="searchInput">Search kits</label>
+        <input id="searchInput" type="search" placeholder="Search kits" autocomplete="off" spellcheck="false" />
+      </div>
+    </header>
+
+    <section class="welcome">
+      <h1>Welcome to Roblox Kit Archive</h1>
+      <p>
+        Football (Soccer) is the most popular sport in the world. Let's see what teams my fellow Robloxians support!
+        I organized it all like a file explorer. Browse by club or national teams and explore my finds.
+      </p>
+    </section>
+
+    <main class="main">
+      <aside class="sidebar" id="folderSidebar" aria-label="Folder browser">
+        <div class="paneTitleRow">
+          <div class="paneTitle">Folders</div>
+          <button class="paneClose mobileOnly" id="btnCloseFolders" type="button" aria-label="Close folders">×</button>
+        </div>
+        <div id="tree" class="tree" role="navigation" aria-label="Folder tree"></div>
+      </aside>
+
+      <section class="content" aria-label="Archive contents">
+        <div class="paneTitle" id="listTitle">Details</div>
+
+        <div class="listHeader" aria-hidden="true">
+          <div class="col name">Name</div>
+          <div class="col type">Type</div>
+          <div class="col size">Size</div>
+        </div>
+
+        <div id="list" class="list" role="list"></div>
+      </section>
+
+      <aside class="preview" id="previewPane" aria-label="Kit preview">
+        <div class="paneTitleRow">
+          <div class="paneTitle">Preview</div>
+          <button class="paneClose mobileOnly" id="btnClosePreview" type="button" aria-label="Close preview">×</button>
+        </div>
+        <div class="previewInner" id="preview">
+          <div class="muted">Select a kit to preview.</div>
+        </div>
+      </aside>
+    </main>
+
+    <footer class="statusbar">
+      <div id="statusLeft">Ready</div>
+      <div id="statusRight"></div>
+    </footer>
+  </div>
+
+  <button class="drawerBackdrop" id="drawerBackdrop" type="button" aria-label="Close folders" tabindex="-1"></button>
+
+  <script src="app.js?v=202"></script>
+</body>
+</html>
