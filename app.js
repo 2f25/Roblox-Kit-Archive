@@ -16,19 +16,17 @@ const ui = {
 };
 
 const ROOT_PATH = "Roblox Kit Archive";
+const INDEX_URL = "./archive-index.json";
+const API_TREE_URL = "https://api.github.com/repos/2f25/Roblox-Kit-Archive/git/trees/main?recursive=1";
 
 const state = {
-  owner: "2f25",
-  repo: "Roblox-Kit-Archive",
-  branch: "main",
   cwdPath: "",
   history: [],
   forward: [],
   selected: null,
-  cache: new Map(),
   query: "",
-  fullIndex: null,
-  indexingPromise: null,
+  allItems: [],
+  childrenByPath: new Map(),
   searchTimer: null,
 };
 
@@ -36,6 +34,7 @@ init().catch(showFatalError);
 
 async function init() {
   wireUI();
+  await loadArchiveData();
   await navigateTo(ROOT_PATH, { push: false, clearSearch: false });
   updateNavButtons();
 }
@@ -65,10 +64,9 @@ function wireUI() {
     updateNavButtons();
   });
 
-  // Debounce keeps typing smooth on phones and prevents needless re-renders.
   ui.search?.addEventListener("input", () => {
     clearTimeout(state.searchTimer);
-    state.searchTimer = setTimeout(runSearchFromInput, 180);
+    state.searchTimer = setTimeout(runSearchFromInput, 120);
     updateClearSearchButton();
   });
 
@@ -82,6 +80,107 @@ function wireUI() {
   });
 }
 
+async function loadArchiveData() {
+  ui.statusLeft.textContent = "Loading archive…";
+
+  // Primary source: a static file served by GitHub Pages.
+  // This does NOT consume GitHub API requests.
+  try {
+    const res = await fetch(`${INDEX_URL}?v=104`, { cache: "no-store" });
+    if (!res.ok) throw new Error(`Index HTTP ${res.status}`);
+
+    const data = await res.json();
+    const items = Array.isArray(data) ? data : data.items;
+
+    if (!Array.isArray(items) || items.length === 0) {
+      throw new Error("archive-index.json is empty");
+    }
+
+    installArchiveItems(items);
+    return;
+  } catch (indexError) {
+    console.warn("Static archive index unavailable; trying one GitHub API request.", indexError);
+  }
+
+  // Compatibility fallback for the first deployment only.
+  // Unlike the old code, this makes ONE API request total, not one per folder.
+  try {
+    const res = await fetch(API_TREE_URL, {
+      headers: { Accept: "application/vnd.github+json" },
+    });
+
+    if (!res.ok) {
+      const remaining = res.headers.get("x-ratelimit-remaining");
+      const reset = Number(res.headers.get("x-ratelimit-reset"));
+      let extra = "";
+
+      if (remaining === "0") {
+        extra = " GitHub's public API limit is currently exhausted.";
+        if (Number.isFinite(reset) && reset > 0) {
+          extra += ` Reset: ${new Date(reset * 1000).toLocaleTimeString()}.`;
+        }
+      }
+
+      throw new Error(`GitHub API error: ${res.status}.${extra}`);
+    }
+
+    const data = await res.json();
+    const prefix = `${ROOT_PATH}/`;
+    const items = (Array.isArray(data.tree) ? data.tree : [])
+      .filter((entry) =>
+        (entry.type === "blob" || entry.type === "tree") &&
+        (entry.path === ROOT_PATH || entry.path.startsWith(prefix))
+      )
+      .map((entry) => ({
+        type: entry.type === "tree" ? "dir" : "file",
+        name: lastPathPart(entry.path),
+        path: entry.path,
+        size: entry.size || 0,
+      }));
+
+    installArchiveItems(items);
+  } catch (apiError) {
+    throw new Error(
+      "The local archive index is missing and GitHub's API fallback is unavailable. " +
+      "Upload archive-index.json (or the included GitHub Actions workflow) with these files. " +
+      apiError.message
+    );
+  }
+}
+
+function installArchiveItems(items) {
+  const normalized = items
+    .filter((item) => item && item.path && (item.type === "dir" || item.type === "file"))
+    .map((item) => ({
+      type: item.type,
+      path: String(item.path),
+      name: item.name ? String(item.name) : lastPathPart(String(item.path)),
+      size: Number(item.size) || 0,
+    }));
+
+  if (!normalized.some((item) => item.path === ROOT_PATH && item.type === "dir")) {
+    normalized.unshift({ type: "dir", path: ROOT_PATH, name: ROOT_PATH, size: 0 });
+  }
+
+  state.allItems = normalized;
+  state.childrenByPath = new Map();
+
+  for (const item of normalized) {
+    if (item.path === ROOT_PATH) continue;
+    const parent = parentPath(item.path);
+    if (!state.childrenByPath.has(parent)) state.childrenByPath.set(parent, []);
+    state.childrenByPath.get(parent).push(item);
+  }
+}
+
+function fetchContents(path) {
+  return Promise.resolve(state.childrenByPath.get(path) || []);
+}
+
+function ensureSearchIndex() {
+  return Promise.resolve(state.allItems);
+}
+
 async function runSearchFromInput() {
   const query = (ui.search?.value || "").trim().toLowerCase();
   state.query = query;
@@ -93,32 +192,9 @@ async function runSearchFromInput() {
     return;
   }
 
-  const queryAtStart = query;
-  ui.listTitle.textContent = "Search";
-  ui.list.innerHTML = `<div class="row messageRow"><div>Searching the archive…</div><div></div><div></div></div>`;
-  ui.statusLeft.textContent = "Building search index…";
-
-  try {
-    await ensureSearchIndex();
-
-    // Ignore an old async result if the user changed the query while it loaded.
-    if (state.query !== queryAtStart) return;
-
-    renderSearchResults();
-    updateStatus();
-  } catch (err) {
-    console.error(err);
-    if (state.query !== queryAtStart) return;
-    ui.listTitle.textContent = "Search";
-    ui.list.innerHTML = `
-      <div class="row messageRow">
-        <div>
-          Search could not load right now. You can still browse folders normally.
-          <div class="muted" style="margin-top:4px;">${escapeHtml(err.message)}</div>
-        </div><div></div><div></div>
-      </div>`;
-    ui.statusLeft.textContent = "Search unavailable";
-  }
+  await ensureSearchIndex();
+  renderSearchResults();
+  updateStatus();
 }
 
 function clearSearch({ render = true } = {}) {
@@ -126,6 +202,7 @@ function clearSearch({ render = true } = {}) {
   state.query = "";
   if (ui.search) ui.search.value = "";
   updateClearSearchButton();
+
   if (render) {
     renderList();
     updateStatus();
@@ -143,82 +220,6 @@ function updateNavButtons() {
   if (ui.btnUp) ui.btnUp.disabled = state.cwdPath === ROOT_PATH;
 }
 
-function ghApi(path) {
-  return `https://api.github.com/repos/${state.owner}/${state.repo}/contents/${encodeURIComponentPath(path)}?ref=${encodeURIComponent(state.branch)}`;
-}
-
-function ghTreeApi() {
-  return `https://api.github.com/repos/${state.owner}/${state.repo}/git/trees/${encodeURIComponent(state.branch)}?recursive=1`;
-}
-
-function rawUrl(path) {
-  return `https://raw.githubusercontent.com/${encodeURIComponent(state.owner)}/${encodeURIComponent(state.repo)}/${encodeURIComponent(state.branch)}/${encodeURIComponentPath(path)}`;
-}
-
-function encodeURIComponentPath(path) {
-  return path.split("/").map(encodeURIComponent).join("/");
-}
-
-async function fetchJson(url) {
-  const res = await fetch(url, {
-    headers: { Accept: "application/vnd.github+json" },
-  });
-
-  if (!res.ok) {
-    const remaining = res.headers.get("x-ratelimit-remaining");
-    const suffix = remaining === "0" ? " (GitHub API rate limit reached)" : "";
-    throw new Error(`GitHub API error: ${res.status}${suffix}`);
-  }
-
-  return res.json();
-}
-
-async function fetchContents(path) {
-  if (state.cache.has(path)) return state.cache.get(path);
-
-  const data = await fetchJson(ghApi(path));
-  const arr = Array.isArray(data) ? data : [];
-  state.cache.set(path, arr);
-  return arr;
-}
-
-async function ensureSearchIndex() {
-  if (state.fullIndex) return state.fullIndex;
-  if (state.indexingPromise) return state.indexingPromise;
-
-  state.indexingPromise = (async () => {
-    const data = await fetchJson(ghTreeApi());
-
-    if (data.truncated) {
-      throw new Error("The repository search index was truncated by GitHub.");
-    }
-
-    const prefix = `${ROOT_PATH}/`;
-    const tree = Array.isArray(data.tree) ? data.tree : [];
-
-    state.fullIndex = tree
-      .filter((entry) =>
-        (entry.type === "blob" || entry.type === "tree") &&
-        (entry.path === ROOT_PATH || entry.path.startsWith(prefix))
-      )
-      .map((entry) => ({
-        type: entry.type === "tree" ? "dir" : "file",
-        name: lastPathPart(entry.path),
-        path: entry.path,
-        size: entry.size || 0,
-        download_url: entry.type === "blob" ? rawUrl(entry.path) : null,
-      }));
-
-    return state.fullIndex;
-  })();
-
-  try {
-    return await state.indexingPromise;
-  } finally {
-    state.indexingPromise = null;
-  }
-}
-
 async function navigateTo(path, opts = {}) {
   const { push = true, clearSearch: shouldClearSearch = true } = opts;
 
@@ -231,8 +232,6 @@ async function navigateTo(path, opts = {}) {
   state.selected = null;
 
   if (shouldClearSearch) clearSearch({ render: false });
-
-  await fetchContents(path);
 
   renderBreadcrumbs();
   await renderTree();
@@ -262,7 +261,6 @@ function renderBreadcrumbs() {
     });
   });
 
-  // Keep the current location visible after navigating on narrow screens.
   requestAnimationFrame(() => {
     ui.crumbs.scrollLeft = ui.crumbs.scrollWidth;
   });
@@ -370,14 +368,14 @@ async function makeTreeNode(folder) {
 }
 
 function renderList() {
-  if (state.query && state.fullIndex) {
+  if (state.query) {
     renderSearchResults();
     return;
   }
 
   ui.listTitle.textContent = "Details";
 
-  const items = state.cache.get(state.cwdPath) || [];
+  const items = state.childrenByPath.get(state.cwdPath) || [];
   const folders = items
     .filter((x) => x.type === "dir")
     .sort((a, b) => a.name.localeCompare(b.name));
@@ -398,7 +396,7 @@ function renderList() {
 function renderSearchResults() {
   const words = state.query.split(/\s+/).filter(Boolean);
 
-  const matches = state.fullIndex
+  const matches = state.allItems
     .filter((item) => item.path !== ROOT_PATH)
     .map((item) => {
       const name = stripExt(item.name).toLowerCase();
@@ -527,7 +525,7 @@ function renderPreview(file) {
     return;
   }
 
-  const src = file.download_url || rawUrl(file.path);
+  const src = siteFileUrl(file.path);
   ui.preview.innerHTML = `
     <img src="${escapeHtml(src)}" alt="${escapeHtml(stripExt(file.name))}" loading="lazy" />
     <div class="previewName">${escapeHtml(stripExt(file.name))}</div>
@@ -535,6 +533,10 @@ function renderPreview(file) {
       <a href="${escapeHtml(src)}" target="_blank" rel="noopener noreferrer">Open image</a>
     </div>
   `;
+}
+
+function siteFileUrl(path) {
+  return "./" + path.split("/").map(encodeURIComponent).join("/");
 }
 
 function scrollPreviewIntoView() {
@@ -546,16 +548,16 @@ function scrollPreviewIntoView() {
 }
 
 function updateStatus() {
-  if (state.query && state.fullIndex) {
+  if (state.query) {
     const words = state.query.split(/\s+/).filter(Boolean);
-    const count = state.fullIndex.filter((item) => {
+    const count = state.allItems.filter((item) => {
       if (item.path === ROOT_PATH) return false;
       const haystack = `${stripExt(item.name)} ${item.path}`.toLowerCase();
       return words.every((word) => haystack.includes(word));
     }).length;
     ui.statusLeft.textContent = `${count} search result${count === 1 ? "" : "s"}`;
   } else {
-    const items = state.cache.get(state.cwdPath) || [];
+    const items = state.childrenByPath.get(state.cwdPath) || [];
     const folderCount = items.filter((x) => x.type === "dir").length;
     const fileCount = items.filter((x) => x.type === "file").length;
     ui.statusLeft.textContent = `${folderCount} folder(s), ${fileCount} file(s)`;
@@ -569,6 +571,12 @@ function folderLabelFor(item) {
   parts.pop();
   if (parts[0] === ROOT_PATH) parts.shift();
   return parts.length ? parts.join(" / ") : "Home";
+}
+
+function parentPath(path) {
+  const parts = splitPath(path);
+  parts.pop();
+  return joinPath(parts);
 }
 
 function lastPathPart(path) {
@@ -624,7 +632,13 @@ function escapeHtml(str) {
 function showFatalError(err) {
   console.error(err);
   if (ui.list) {
-    ui.list.innerHTML = `<div class="row messageRow"><div>Error: ${escapeHtml(err.message)}</div><div></div><div></div></div>`;
+    ui.list.innerHTML = `
+      <div class="row messageRow">
+        <div>
+          Could not load archive.
+          <div class="muted" style="margin-top:6px;">${escapeHtml(err.message)}</div>
+        </div><div></div><div></div>
+      </div>`;
   }
   if (ui.statusLeft) ui.statusLeft.textContent = "Could not load archive";
 }
