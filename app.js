@@ -36,6 +36,9 @@ init().catch((err) => {
 });
 
 async function init() {
+  loadSessionCache();
+  const cachedIndex = loadSessionIndex();
+  if (cachedIndex) state.fullIndex = cachedIndex;
   wireUI();
   await navigateTo(ROOT_PATH, { push: false });
   updateNavButtons();
@@ -57,6 +60,7 @@ function wireUI() {
       ui.listTitle.textContent = "Details";
       try {
         state.fullIndex = await buildFullIndex(ROOT_PATH);
+        saveSessionIndex(state.fullIndex);
       } catch (err) {
         console.error(err);
         ui.list.innerHTML = `<div class="row"><div>Search error: ${err.message}</div><div></div><div></div></div>`;
@@ -110,17 +114,66 @@ function encodeURIComponentPath(path) {
   return path.split("/").map(encodeURIComponent).join("/");
 }
 
+const SESSION_CACHE_KEY = "rka_cache_v1";
+const SESSION_INDEX_KEY = "rka_fullindex_v1";
+
+function loadSessionCache() {
+  try {
+    const raw = sessionStorage.getItem(SESSION_CACHE_KEY);
+    if (!raw) return;
+    const obj = JSON.parse(raw);
+    for (const [k, v] of Object.entries(obj)) {
+      state.cache.set(k, v);
+    }
+  } catch (e) {
+    // sessionStorage unavailable or corrupt data — just skip, not fatal
+  }
+}
+
+function saveSessionCache() {
+  try {
+    const obj = Object.fromEntries(state.cache.entries());
+    sessionStorage.setItem(SESSION_CACHE_KEY, JSON.stringify(obj));
+  } catch (e) {
+    // storage full or unavailable — fine to skip, it's just a perf optimization
+  }
+}
+
+function loadSessionIndex() {
+  try {
+    const raw = sessionStorage.getItem(SESSION_INDEX_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch (e) {
+    return null;
+  }
+}
+
+function saveSessionIndex(files) {
+  try {
+    sessionStorage.setItem(SESSION_INDEX_KEY, JSON.stringify(files));
+  } catch (e) {
+    // fine to skip
+  }
+}
+
 async function fetchContents(path) {
   if (state.cache.has(path)) return state.cache.get(path);
 
   const res = await fetch(ghApi(path));
   if (!res.ok) {
+    if (res.status === 403) {
+      throw new Error(
+        "GitHub's request limit was hit (60/hour for visitors). Please wait a bit and refresh — this resets automatically."
+      );
+    }
     throw new Error(`GitHub API error: ${res.status}`);
   }
 
   const data = await res.json();
   const arr = Array.isArray(data) ? data : [];
   state.cache.set(path, arr);
+  saveSessionCache();
   return arr;
 }
 
