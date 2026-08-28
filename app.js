@@ -21,9 +21,6 @@ const ui = {
 
 const ROOT_PATH = "Roblox Kit Archive";
 const MOBILE_BREAKPOINT = 900;
-const SEARCH_DEBOUNCE_MS = 180;
-
-let searchTimer = null;
 
 const state = {
   owner: "2f25",
@@ -37,8 +34,6 @@ const state = {
   query: "",
   fullIndex: null,
   indexing: false,
-  fullIndexPromise: null,
-  searchToken: 0,
 };
 
 init().catch((err) => {
@@ -53,21 +48,34 @@ async function init() {
 }
 
 function wireUI() {
-  ui.search.addEventListener("input", handleSearchInput);
+  ui.search.addEventListener("input", async () => {
+    state.query = ui.search.value.trim().toLowerCase();
 
-  ui.search.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && ui.search.value) {
-      e.preventDefault();
-      ui.search.value = "";
-      handleSearchInput();
-      ui.search.focus();
+    if (!state.query) {
+      renderList();
+      updateStatus();
+      return;
     }
 
-    if (e.key === "Enter") {
-      // Keep mobile browsers from treating Enter as a page/form navigation.
-      e.preventDefault();
-      ui.search.blur();
+    if (!state.fullIndex && !state.indexing) {
+      state.indexing = true;
+      ui.list.innerHTML = `<div class="row"><div>Searching all folders…</div><div></div><div></div></div>`;
+      ui.listTitle.textContent = "Details";
+
+      try {
+        state.fullIndex = await buildFullIndex(ROOT_PATH);
+      } catch (err) {
+        console.error(err);
+        ui.list.innerHTML = `<div class="row"><div>Search error: ${escapeHtml(err.message)}</div><div></div><div></div></div>`;
+        state.indexing = false;
+        return;
+      }
+
+      state.indexing = false;
     }
+
+    renderList();
+    updateStatus();
   });
 
   ui.btnBack.addEventListener("click", async () => {
@@ -117,69 +125,6 @@ function wireUI() {
   });
 }
 
-function handleSearchInput() {
-  const query = ui.search.value.trim().toLowerCase();
-  state.query = query;
-  state.selected = null;
-  state.searchToken += 1;
-  const token = state.searchToken;
-
-  closePreview();
-  clearTimeout(searchTimer);
-
-  if (!query) {
-    ui.listTitle.textContent = "Details";
-    renderList();
-    renderPreview(null);
-    updateStatus();
-    return;
-  }
-
-  // Give immediate feedback while the repository index is being prepared.
-  if (!state.fullIndex) {
-    ui.listTitle.textContent = "Search";
-    ui.list.innerHTML = `
-      <div class="searchMessage" role="status">
-        <div class="searchSpinner" aria-hidden="true"></div>
-        <div>Searching the archive…</div>
-      </div>
-    `;
-  }
-
-  searchTimer = setTimeout(() => runSearch(query, token), SEARCH_DEBOUNCE_MS);
-}
-
-async function runSearch(query, token) {
-  try {
-    await ensureFullIndex();
-
-    // Ignore stale search jobs if the user kept typing or cleared the field.
-    if (token !== state.searchToken || query !== state.query) return;
-
-    renderSearchResults(query);
-    updateStatus();
-  } catch (err) {
-    console.error(err);
-    if (token !== state.searchToken || query !== state.query) return;
-
-    ui.listTitle.textContent = "Search";
-    ui.list.innerHTML = `
-      <div class="searchMessage searchError" role="alert">
-        <div>Search could not load.</div>
-        <button type="button" class="retrySearchBtn">Try again</button>
-      </div>
-    `;
-
-    const retry = ui.list.querySelector(".retrySearchBtn");
-    retry?.addEventListener("click", () => {
-      state.fullIndex = null;
-      state.fullIndexPromise = null;
-      state.indexing = false;
-      handleSearchInput();
-    });
-  }
-}
-
 function isMobile() {
   return window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT}px)`).matches;
 }
@@ -223,58 +168,22 @@ async function fetchContents(path) {
   return arr;
 }
 
-async function ensureFullIndex() {
-  if (state.fullIndex) return state.fullIndex;
-  if (state.fullIndexPromise) return state.fullIndexPromise;
+async function buildFullIndex(path) {
+  const files = [];
 
-  state.indexing = true;
-  state.fullIndexPromise = buildFullIndex()
-    .then((files) => {
-      state.fullIndex = files;
-      return files;
-    })
-    .finally(() => {
-      state.indexing = false;
-      state.fullIndexPromise = null;
-    });
+  async function walk(p) {
+    const items = await fetchContents(p);
+    for (const item of items) {
+      if (item.type === "dir") {
+        await walk(item.path);
+      } else if (item.type === "file") {
+        files.push(item);
+      }
+    }
+  }
 
-  return state.fullIndexPromise;
-}
-
-async function buildFullIndex() {
-  // One recursive Git tree request replaces dozens/hundreds of per-folder
-  // Contents API requests. This is substantially faster and more reliable on mobile.
-  const treeUrl = `https://api.github.com/repos/${state.owner}/${state.repo}/git/trees/${encodeURIComponent(state.branch)}?recursive=1`;
-  const res = await fetch(treeUrl, {
-    headers: { Accept: "application/vnd.github+json" },
-  });
-
-  if (!res.ok) throw new Error(`GitHub search index error: ${res.status}`);
-
-  const data = await res.json();
-  if (!Array.isArray(data.tree)) throw new Error("GitHub returned an invalid search index.");
-  if (data.truncated) throw new Error("The repository search index was truncated by GitHub.");
-
-  const rootPrefix = `${ROOT_PATH}/`;
-
-  return data.tree
-    .filter((item) => item.type === "blob" && item.path.startsWith(rootPrefix))
-    .map((item) => {
-      const parts = splitPath(item.path);
-      const name = parts[parts.length - 1] || item.path;
-
-      return {
-        type: "file",
-        name,
-        path: item.path,
-        size: item.size || 0,
-        download_url: rawFileUrl(item.path),
-      };
-    });
-}
-
-function rawFileUrl(path) {
-  return `https://raw.githubusercontent.com/${state.owner}/${state.repo}/${encodeURIComponent(state.branch)}/${encodeURIComponentPath(path)}`;
+  await walk(path);
+  return files;
 }
 
 function folderLabelFor(item) {
@@ -437,8 +346,8 @@ async function makeTreeNode(folder) {
 }
 
 function renderList() {
-  if (state.query) {
-    if (state.fullIndex) renderSearchResults(state.query);
+  if (state.query && state.fullIndex) {
+    renderSearchResults();
     return;
   }
 
@@ -459,10 +368,11 @@ function renderList() {
   for (const file of files) ui.list.appendChild(makeRow(file, false));
 }
 
-function renderSearchResults(query = state.query) {
+function renderSearchResults() {
+  const query = state.query;
   const matches = state.fullIndex
-    .filter((x) => searchableText(x).includes(query))
-    .sort((a, b) => compareSearchResults(a, b, query));
+    .filter((x) => stripExt(x.name).toLowerCase().includes(query))
+    .sort((a, b) => extractSeason(b.name) - extractSeason(a.name));
 
   ui.listTitle.textContent = `Search Results (${matches.length})`;
   ui.list.innerHTML = "";
@@ -473,24 +383,6 @@ function renderSearchResults(query = state.query) {
   }
 
   for (const file of matches) ui.list.appendChild(makeSearchRow(file));
-}
-
-function searchableText(item) {
-  return `${stripExt(item.name)} ${folderLabelFor(item)}`.toLowerCase();
-}
-
-function compareSearchResults(a, b, query) {
-  const aName = stripExt(a.name).toLowerCase();
-  const bName = stripExt(b.name).toLowerCase();
-  const aStarts = aName.startsWith(query) ? 1 : 0;
-  const bStarts = bName.startsWith(query) ? 1 : 0;
-
-  if (aStarts !== bStarts) return bStarts - aStarts;
-
-  const seasonDiff = extractSeason(b.name) - extractSeason(a.name);
-  if (seasonDiff) return seasonDiff;
-
-  return aName.localeCompare(bName);
 }
 
 function makeSearchRow(item) {
@@ -584,7 +476,7 @@ function renderPreview(file) {
 
 function updateStatus() {
   if (state.query && state.fullIndex) {
-    const matches = state.fullIndex.filter((x) => searchableText(x).includes(state.query));
+    const matches = state.fullIndex.filter((x) => stripExt(x.name).toLowerCase().includes(state.query));
     ui.statusLeft.textContent = `${matches.length} result(s) across all folders`;
     ui.statusRight.textContent = state.selected ? stripExt(state.selected.name) : "";
     return;

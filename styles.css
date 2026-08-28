@@ -253,39 +253,6 @@ a{ color:var(--accent); }
   text-overflow:ellipsis;
 }
 
-
-.searchMessage{
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  gap:10px;
-  min-height:100px;
-  padding:20px;
-  color:var(--muted);
-  text-align:center;
-}
-.searchSpinner{
-  width:18px;
-  height:18px;
-  flex:0 0 18px;
-  border:2px solid rgba(255,255,255,.18);
-  border-top-color:var(--accent);
-  border-radius:50%;
-  animation:searchSpin .75s linear infinite;
-}
-@keyframes searchSpin{ to{ transform:rotate(360deg); } }
-.searchError{ flex-direction:column; }
-.retrySearchBtn{
-  min-height:40px;
-  padding:7px 13px;
-  border:1px solid var(--line);
-  border-radius:9px;
-  background:var(--panel2);
-  color:var(--text);
-  cursor:pointer;
-}
-.retrySearchBtn:hover{ border-color:var(--accent); }
-
 .previewInner{
   flex:1;
   min-height:0;
